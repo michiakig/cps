@@ -67,3 +67,32 @@ and T (Lambda.App (f, e), cont) =
                                      CPS.App (CPS.Var f', [CPS.Var e', cont])))))
     end
   | T (expr, cont) = CPS.App (cont, [M expr])
+
+(* The higher-order transform. *)
+
+(*
+ * T : Lambda.expr * (CPS.aexp -> CPS.cexp) -> CPS.cexp
+ * "T ... will receive a function instead of a syntactic continuation; this callback function will be passed an atomized version of the expression, and it is expected to produce a complex CPS form that utilizes it"
+ *)
+fun T (Lambda.App (f, e), k) =
+    let
+       val rv = gensym "$rv"
+       val cont = CPS.Lam ([rv], k (CPS.Var rv))
+    in
+       T (f, fn f' =>
+                T (e, fn e' =>
+                         CPS.App (f', [e', cont])))
+    end
+  | T (expr, k) = k (M expr)
+
+(*
+ * M : Lambda.expr -> CPS.aexp
+ *)
+and M (Lambda.Lam (x, body)) =
+    let
+       val k = gensym "$k"
+    in
+       CPS.Lam ([x, k], T (body, fn rv => CPS.App (CPS.Var k, [rv])))
+    end
+  | M (e as Lambda.Var x) = CPS.Var x
+  | M _ = raise Match
