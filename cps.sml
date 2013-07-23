@@ -96,3 +96,39 @@ and M (Lambda.Lam (x, body)) =
     end
   | M (e as Lambda.Var x) = CPS.Var x
   | M _ = raise Match
+
+(* A hybrid transform. *)
+
+(*
+ * Tc : expr * aexp -> cexp
+ * Tk : expr * (aexp -> cexp) => cexp
+ * M : expr => aexp
+ *)
+
+(* Tk expects a higher-order continuation in k *)
+fun Tk (Lambda.App (f, e), k) =
+    let
+       val rv = gensym "$rv"
+       val cont = CPS.Lam ([rv], k (CPS.Var rv))
+    in
+       Tk (f, fn f' =>
+                 Tk (e, fn e' =>
+                           CPS.App (f', [e', cont])))
+    end
+  | Tk (expr, k) = k (M expr)
+
+(* Tc expects a syntactic continuation in c *)
+and Tc (Lambda.App (f, e), cont) =
+    Tk (f, fn f' =>
+              Tk (e, fn e' =>
+                        CPS.App (f', [e', cont])))
+  | Tc (expr, cont) = CPS.App (cont, [M expr])
+
+and M (Lambda.Lam (x, body)) =
+    let
+       val k = gensym "$k"
+    in
+       CPS.Lam ([x, k], Tc (body, CPS.Var k))
+    end
+  | M (Lambda.Var x) = CPS.Var x
+  | M _ = raise Match
